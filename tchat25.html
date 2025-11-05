@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Chat Overlay – production</title>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600&display=swap" rel="stylesheet">
+  <style>
+    html, body { height: 100%; }
+    body {
+      margin: 0;
+      background: transparent;
+      font-family: 'Space Grotesk', sans-serif;
+      color: #fff;
+      overflow: hidden;
+    }
+    #wrap {
+      position: absolute; inset: 0; padding: 10px 12px;
+      display: flex; flex-direction: column; justify-content: flex-end;
+      pointer-events: none;
+    }
+    #chat {
+      display: flex; flex-direction: column; gap: 8px;
+      max-height: 100%; overflow: hidden;
+    }
+    .msg { max-width: 92%; animation: fadeInUp .36s ease both; }
+
+    /* --- Ligne pseudo --- */
+    .user-line { display: flex; align-items: center; gap: 5px; margin-bottom: 3px; }
+    .badges   { display: flex; align-items: center; gap: 3px; }
+    .badge {
+      width: 16px; height: 16px;
+      background-size: contain; background-repeat: no-repeat; background-position: center;
+      filter: drop-shadow(0 1px 2px rgba(0,0,0,.35));
+    }
+    .name{
+      font-weight: 600; font-size: 13px; color: #000;
+      background: rgba(255,255,255,0.9);
+      border-radius: 999px; padding: 2px 8px; line-height: 1.25;
+      display: inline-block;
+    }
+
+    /* --- Ligne message --- */
+    .text-line{
+      font-weight: 400; font-size: 14px; color: #fff;
+      text-shadow: 0 2px 4px rgba(0,0,0,.55);
+      line-height: 1.35;
+    }
+
+    @keyframes fadeInUp { from {opacity:0; transform: translateY(6px);} to {opacity:1; transform: translateY(0);} }
+  </style>
+</head>
+<body>
+  <div id="wrap"><div id="chat" aria-live="polite"></div></div>
+
+  <!-- tmi.js : client Twitch chat -->
+  <script src="https://cdn.jsdelivr.net/npm/tmi.js@1.8.5/dist/tmi.min.js"></script>
+  <script>
+    /* ============== CONFIG ============== */
+    const CHANNEL = 'AnsoQuest';      // <- remplace par TON pseudo Twitch
+    const LIMIT   = 10;               // nb max de messages visibles
+
+    // Badges "généraux" Twitch (icônes officielles du CDN)
+    const BADGE_URLS = {
+      moderator: 'https://static-cdn.jtvnw.net/badges/v1/3f88f2c0-6f38-42f0-92b9-565d8a9f55a3/1',
+      vip:       'https://static-cdn.jtvnw.net/badges/v1/5f16adbf-c286-4b23-9e59-8c5b9cdd0c57/1',
+      premium:   'https://static-cdn.jtvnw.net/badges/v1/1b3f2700-3059-4dd7-8496-37b69e4c0dbf/1', // Prime
+      subscriber:'https://static-cdn.jtvnw.net/badges/v1/a84d997e-6dc1-4371-8a18-0dff7aaf6ac7/1'  // générique
+    };
+
+    const chatEl = document.getElementById('chat');
+
+    function addMessage({ displayName, message, badgeList }) {
+      const wrap = document.createElement('div'); wrap.className = 'msg';
+
+      // ligne pseudo
+      const userLine  = document.createElement('div'); userLine.className  = 'user-line';
+      const badgesDiv = document.createElement('div'); badgesDiv.className = 'badges';
+
+      (badgeList || []).forEach(b => {
+        const url = BADGE_URLS[b];
+        if (!url) return;
+        const el = document.createElement('span');
+        el.className = 'badge';
+        el.style.backgroundImage = `url("${url}")`;
+        badgesDiv.appendChild(el);
+      });
+
+      const name = document.createElement('span');
+      name.className = 'name';
+      name.textContent = displayName || 'viewer';
+
+      userLine.appendChild(badgesDiv);
+      userLine.appendChild(name);
+
+      // ligne message
+      const text = document.createElement('div');
+      text.className = 'text-line';
+      text.textContent = message;
+
+      wrap.appendChild(userLine);
+      wrap.appendChild(text);
+      chatEl.appendChild(wrap);
+
+      while (chatEl.children.length > LIMIT) chatEl.removeChild(chatEl.firstChild);
+    }
+
+    // Connexion au chat Twitch
+    const client = new tmi.Client({
+      connection: { secure: true, reconnect: true },
+      channels: [CHANNEL]
+    });
+    client.connect().catch(console.error);
+
+    client.on('message', (_channel, tags, msg, self) => {
+      if (self) return;
+      const badgesObj = tags.badges || {};               // ex: { moderator: '1', subscriber: '6' }
+      const badgeList = Object.keys(badgesObj)            // on garde seulement ceux que l'on sait afficher
+        .filter(k => ['moderator','vip','premium','subscriber'].includes(k));
+
+      addMessage({
+        displayName: tags['display-name'] || tags.username || 'viewer',
+        message: msg,
+        badgeList
+      });
+    });
+  </script>
+</body>
+</html>
