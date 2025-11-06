@@ -2,128 +2,165 @@
 <html lang="fr">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Chat Overlay – production</title>
-  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600&display=swap" rel="stylesheet" />
+
   <style>
-    html, body { height: 100%; }
+    html, body { height: 100%; margin: 0; background: transparent; overflow: hidden; }
     body {
-      margin: 0;
-      background: transparent;
       font-family: 'Space Grotesk', sans-serif;
       color: #fff;
-      overflow: hidden;
     }
     #wrap {
-      position: absolute; inset: 0; padding: 10px 12px;
-      display: flex; flex-direction: column; justify-content: flex-end;
+      position: absolute;
+      inset: 0;
+      padding: 10px 12px;
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-end;
       pointer-events: none;
     }
     #chat {
-      display: flex; flex-direction: column; gap: 8px;
-      max-height: 100%; overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      max-height: 100%;
+      overflow: hidden;
     }
-    .msg { max-width: 92%; animation: fadeInUp .36s ease both; }
+    .msg {
+      max-width: 92%;
+      animation: fadeInUp .35s ease both;
+    }
 
-    /* --- Ligne pseudo --- */
-    .user-line { display: flex; align-items: center; gap: 5px; margin-bottom: 3px; }
-    .badges   { display: flex; align-items: center; gap: 3px; }
+    .user-line {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      margin-bottom: 3px;
+    }
+    .badges {
+      display: flex;
+      align-items: center;
+      gap: 3px;
+    }
     .badge {
-      width: 16px; height: 16px;
-      background-size: contain; background-repeat: no-repeat; background-position: center;
+      width: 16px;
+      height: 16px;
+      background-size: contain;
+      background-repeat: no-repeat;
+      background-position: center;
       filter: drop-shadow(0 1px 2px rgba(0,0,0,.35));
     }
-    .name{
-      font-weight: 600; font-size: 13px; color: #000;
+    .name {
+      font-weight: 600;
+      font-size: 13px;
+      color: #000;
       background: rgba(255,255,255,0.9);
-      border-radius: 999px; padding: 2px 8px; line-height: 1.25;
+      border-radius: 999px;
+      padding: 2px 8px;
+      line-height: 1.25;
       display: inline-block;
     }
 
-    /* --- Ligne message --- */
-    .text-line{
-      font-weight: 400; font-size: 14px; color: #fff;
+    .text-line {
+      font-weight: 400;
+      font-size: 14px;
+      color: #fff;
       text-shadow: 0 2px 4px rgba(0,0,0,.55);
       line-height: 1.35;
     }
 
-    @keyframes fadeInUp { from {opacity:0; transform: translateY(6px);} to {opacity:1; transform: translateY(0);} }
+    @keyframes fadeInUp {
+      from { opacity: 0; transform: translateY(6px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
   </style>
 </head>
 <body>
-  <div id="wrap"><div id="chat" aria-live="polite"></div></div>
+  <div id="wrap">
+    <div id="chat"></div>
+  </div>
 
-  <!-- tmi.js : client Twitch chat -->
-  <script src="https://cdn.jsdelivr.net/npm/tmi.js@1.8.5/dist/tmi.min.js"></script>
+  <!-- ✅ Chargement de tmi.js depuis un CDN fiable -->
+  <script src="https://unpkg.com/tmi.js@1.8.5/dist/tmi.min.js"></script>
+
   <script>
-    /* ============== CONFIG ============== */
-    const CHANNEL = 'ansoquest';      // <- remplace par TON pseudo Twitch
-    const LIMIT   = 10;               // nb max de messages visibles
+    const CHANNEL = 'ansoquest'; // ton pseudo Twitch
 
-    // Badges "généraux" Twitch (icônes officielles du CDN)
-    const BADGE_URLS = {
-      moderator: 'https://static-cdn.jtvnw.net/badges/v1/3f88f2c0-6f38-42f0-92b9-565d8a9f55a3/1',
-      vip:       'https://static-cdn.jtvnw.net/badges/v1/5f16adbf-c286-4b23-9e59-8c5b9cdd0c57/1',
-      premium:   'https://static-cdn.jtvnw.net/badges/v1/1b3f2700-3059-4dd7-8496-37b69e4c0dbf/1', // Prime
-      subscriber:'https://static-cdn.jtvnw.net/badges/v1/a84d997e-6dc1-4371-8a18-0dff7aaf6ac7/1'  // générique
-    };
-
-    const chatEl = document.getElementById('chat');
+    const chat = document.getElementById('chat');
 
     function addMessage({ displayName, message, badgeList }) {
-      const wrap = document.createElement('div'); wrap.className = 'msg';
+      const msg = document.createElement('div');
+      msg.className = 'msg';
 
-      // ligne pseudo
-      const userLine  = document.createElement('div'); userLine.className  = 'user-line';
-      const badgesDiv = document.createElement('div'); badgesDiv.className = 'badges';
+      const userLine = document.createElement('div');
+      userLine.className = 'user-line';
 
-      (badgeList || []).forEach(b => {
-        const url = BADGE_URLS[b];
-        if (!url) return;
-        const el = document.createElement('span');
+      const badges = document.createElement('div');
+      badges.className = 'badges';
+      badgeList.forEach(b => {
+        const el = document.createElement('div');
         el.className = 'badge';
-        el.style.backgroundImage = `url("${url}")`;
-        badgesDiv.appendChild(el);
+        if (b === 'mod') el.style.backgroundImage = 'url(https://static-cdn.jtvnw.net/badges/v1/3267646e-f1b9-47a5-9f4a-df85ed4f3728/1)';
+        if (b === 'vip') el.style.backgroundImage = 'url(https://static-cdn.jtvnw.net/badges/v1/b817aba4-31ef-4f44-a19c-b06c5022f826/1)';
+        if (b === 'prime') el.style.backgroundImage = 'url(https://static-cdn.jtvnw.net/badges/v1/d12a2e26-97e0-4a6a-9a3f-1d19ccbd4cc1/1)';
+        if (b === 'sub') el.style.backgroundImage = 'url(https://static-cdn.jtvnw.net/badges/v1/8489478c-b8ef-4095-b62f-dab085eddf12/1)';
+        badges.appendChild(el);
       });
 
       const name = document.createElement('span');
       name.className = 'name';
-      name.textContent = displayName || 'viewer';
+      name.textContent = displayName;
 
-      userLine.appendChild(badgesDiv);
+      userLine.appendChild(badges);
       userLine.appendChild(name);
 
-      // ligne message
-      const text = document.createElement('div');
-      text.className = 'text-line';
-      text.textContent = message;
+      const textLine = document.createElement('div');
+      textLine.className = 'text-line';
+      textLine.textContent = message;
 
-      wrap.appendChild(userLine);
-      wrap.appendChild(text);
-      chatEl.appendChild(wrap);
+      msg.appendChild(userLine);
+      msg.appendChild(textLine);
+      chat.appendChild(msg);
 
-      while (chatEl.children.length > LIMIT) chatEl.removeChild(chatEl.firstChild);
+      // limiter à 10 messages
+      while (chat.children.length > 10) {
+        chat.removeChild(chat.firstChild);
+      }
     }
 
-    // Connexion au chat Twitch
+    // ✅ Connexion au tchat Twitch
     const client = new tmi.Client({
-      connection: { secure: true, reconnect: true },
-      channels: [CHANNEL]
+      channels: [CHANNEL],
     });
-    client.connect().catch(console.error);
 
-    client.on('message', (_channel, tags, msg, self) => {
+    client.connect();
+
+    client.on('connected', () => console.log('✅ TMI connected'));
+    client.on('disconnected', (r) => console.log('❌ TMI disconnected:', r));
+
+    client.on('message', (channel, tags, message, self) => {
       if (self) return;
-      const badgesObj = tags.badges || {};               // ex: { moderator: '1', subscriber: '6' }
-      const badgeList = Object.keys(badgesObj)            // on garde seulement ceux que l'on sait afficher
-        .filter(k => ['moderator','vip','premium','subscriber'].includes(k));
-
+      const badges = tags.badges ? Object.keys(tags.badges) : [];
       addMessage({
-        displayName: tags['display-name'] || tags.username || 'viewer',
-        message: msg,
-        badgeList
+        displayName: tags['display-name'] || 'User',
+        message,
+        badgeList: badges,
       });
     });
+
+    // 💡 Mode démo pour test sans Twitch : ajoute ?demo=1 à l’URL
+    if (new URLSearchParams(location.search).get('demo') === '1') {
+      let i = 1;
+      setInterval(() => {
+        addMessage({
+          displayName: 'DemoUser',
+          message: `Message de test #${i++}`,
+          badgeList: ['vip']
+        });
+      }, 1500);
+    }
   </script>
 </body>
 </html>
