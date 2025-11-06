@@ -6,138 +6,162 @@
   <title>Overlay Chat Twitch – ansoquest</title>
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600&display=swap" rel="stylesheet" />
   <style>
+    :root{
+      --box-width: 345px;
+      --box-height: 678px;
+      --fade-size: 36px;
+      --box-radius: 16px;
+      --box-pad: 10px;
+    }
+
     html, body { height:100%; margin:0; background:transparent; overflow:hidden; }
     body { font-family:'Space Grotesk',sans-serif; color:#fff; }
-    #wrap { position:absolute; inset:0; padding:10px 12px; display:flex; flex-direction:column; justify-content:flex-end; pointer-events:none; }
-    #chat { display:flex; flex-direction:column; gap:8px; max-height:100%; overflow:hidden; }
-    .msg { max-width:92%; animation:fadeInUp .35s ease both; }
-    .user-line { display:flex; align-items:center; gap:5px; margin-bottom:3px; }
-    .badges { display:flex; align-items:center; gap:3px; }
-    .badge { width:16px; height:16px; background-size:contain; background-repeat:no-repeat; background-position:center; filter:drop-shadow(0 1px 2px rgba(0,0,0,.35)); }
-    .name { font-weight:600; font-size:13px; color:#000; background:rgba(255,255,255,.9); border-radius:999px; padding:2px 8px; line-height:1.25; display:inline-block; }
-    .text-line { font-weight:400; font-size:14px; color:#fff; text-shadow:0 2px 4px rgba(0,0,0,.55); line-height:1.35; }
-    .fade { animation: fadeOut .6s ease forwards; }
-    @keyframes fadeInUp { from {opacity:0; transform:translateY(6px);} to {opacity:1; transform:translateY(0);} }
-    @keyframes fadeOut { to { opacity:0; transform:translateY(-4px);} }
+
+    #wrap {
+      position:absolute; inset:0;
+      display:flex; justify-content:flex-end; align-items:flex-end;
+      pointer-events:none;
+      padding:12px;
+    }
+
+    .chat-box {
+      position:relative;
+      width: var(--box-width);
+      height: var(--box-height);
+      overflow: hidden;
+      border-radius: var(--box-radius);
+      background: rgba(0,0,0,.18);
+      box-shadow: 0 4px 24px rgba(0,0,0,.25);
+      backdrop-filter: blur(2px);
+    }
+
+    #chat {
+      position:absolute; inset: var(--box-pad);
+      overflow-y: auto;
+      display:flex; flex-direction:column; gap:8px;
+      scrollbar-width: none;
+    }
+    #chat::-webkit-scrollbar { display:none; }
+
+    .fade-top, .fade-bottom{
+      position:absolute; left:0; right:0; height:var(--fade-size); pointer-events:none;
+    }
+    .fade-top{ top:0; background: linear-gradient(180deg, rgba(0,0,0,.55), rgba(0,0,0,0)); }
+    .fade-bottom{ bottom:0; background: linear-gradient(0deg, rgba(0,0,0,.55), rgba(0,0,0,0)); }
+
+    .msg { max-width: 96%; animation: fadeInUp .28s ease both; }
+    .user-line { display:flex; align-items:center; gap:6px; margin-bottom:3px; }
+    .badges { display:flex; align-items:center; gap:4px; }
+    .badge {
+      width:18px; height:18px;
+      background-size:contain; background-repeat:no-repeat; background-position:center;
+      filter:drop-shadow(0 1px 2px rgba(0,0,0,.45));
+      flex:0 0 18px;
+    }
+    .name {
+      font-weight:600; font-size:13px; color:#000;
+      background:rgba(255,255,255,0.95);
+      border-radius:999px; padding:2px 9px; line-height:1.25; display:inline-block;
+    }
+    .text-line {
+      font-weight:400; font-size:16px; color:#fff; line-height:1.45;
+      text-shadow:0 2px 4px rgba(0,0,0,.55);
+    }
+
+    #status {
+      position:absolute; top:6px; left:8px; z-index:2;
+      background:rgba(0,0,0,.55);
+      border:1px solid rgba(255,255,255,.18);
+      border-radius:10px; padding:4px 8px;
+      font-size:11px; line-height:1;
+      pointer-events:none;
+    }
+
+    @keyframes fadeInUp { from{opacity:0;transform:translateY(6px);} to{opacity:1;transform:translateY(0);} }
   </style>
 </head>
 <body>
-  <div id="wrap"><div id="chat"></div></div>
+  <div id="wrap">
+    <div class="chat-box">
+      <div id="status">⏳ Connecting…</div>
+      <div class="fade-top"></div>
+      <div id="chat"></div>
+      <div class="fade-bottom"></div>
+    </div>
+  </div>
 
   <script>
-    // ========= CONFIG =========
-    const CHANNEL = 'ansoquest';     // ta chaîne (fixée pour toi)
-    const MAX_MSG = 10;              // nb max de bulles visibles
-    const MSG_LIFETIME = 15000;      // disparition après 15 s (ms). Mets 0 pour désactiver.
-    const SHOW_DEBUG = false;        // passe à true pour logs console
+    const CHANNEL = 'ansoquest';
+    const SHOW_DEBUG = false;
 
-    // ========= UI =========
     const chat = document.getElementById('chat');
-    function addMessage({ displayName, message, badges }) {
-      const msg = document.createElement('div'); msg.className = 'msg';
+    const statusEl = document.getElementById('status');
+    const setStatus = t=>statusEl.textContent=t;
+    const log = (...a)=>SHOW_DEBUG&&console.log(...a);
 
-      const userLine = document.createElement('div'); userLine.className = 'user-line';
-      const badgesEl = document.createElement('div'); badgesEl.className = 'badges';
-
-      (badges || []).forEach(b => {
-        const el = document.createElement('div'); el.className = 'badge';
-        if (b === 'mod')   el.style.backgroundImage = 'url(https://static-cdn.jtvnw.net/badges/v1/3267646e-f1b9-47a5-9f4a-df85ed4f3728/1)';
-        if (b === 'vip')   el.style.backgroundImage = 'url(https://static-cdn.jtvnw.net/badges/v1/b817aba4-31ef-4f44-a19c-b06c5022f826/1)';
-        if (b === 'prime') el.style.backgroundImage = 'url(https://static-cdn.jtvnw.net/badges/v1/d12a2e26-97e0-4a6a-9a3f-1d19ccbd4cc1/1)';
-        if (b === 'subscriber' || b === 'sub') el.style.backgroundImage = 'url(https://static-cdn.jtvnw.net/badges/v1/8489478c-b8ef-4095-b62f-dab085eddf12/1)';
+    function addMessage({displayName,message,badges}){
+      const msg=document.createElement('div'); msg.className='msg';
+      const userLine=document.createElement('div'); userLine.className='user-line';
+      const badgesEl=document.createElement('div'); badgesEl.className='badges';
+      (badges||[]).forEach(code=>{
+        const el=document.createElement('div'); el.className='badge';
+        if(code==='moderator'||code==='mod') el.style.backgroundImage='url(https://static-cdn.jtvnw.net/badges/v1/3267646e-f1b9-47a5-9f4a-df85ed4f3728/2)';
+        if(code==='vip') el.style.backgroundImage='url(https://static-cdn.jtvnw.net/badges/v1/b817aba4-31ef-4f44-a19c-b06c5022f826/2)';
+        if(code==='broadcaster') el.style.backgroundImage='url(https://static-cdn.jtvnw.net/badges/v1/7008c703-e11a-4f99-bd4f-740d47de4f30/2)';
+        if(code==='partner') el.style.backgroundImage='url(https://static-cdn.jtvnw.net/badges/v1/6d4ce6b1-0c02-4b57-9b90-93a75b9a9c45/2)';
+        if(code==='premium'||code==='prime') el.style.backgroundImage='url(https://static-cdn.jtvnw.net/badges/v1/d12a2e26-97e0-4a6a-9a3f-1d19ccbd4cc1/2)';
+        if(code==='subscriber'||code==='sub') el.style.backgroundImage='url(https://static-cdn.jtvnw.net/badges/v1/8489478c-b8ef-4095-b62f-dab085eddf12/2)';
         badgesEl.appendChild(el);
       });
-
-      const name = document.createElement('span'); name.className = 'name';
-      name.textContent = displayName || 'User';
-
-      const textLine = document.createElement('div'); textLine.className = 'text-line';
-      textLine.textContent = message;
-
+      const name=document.createElement('span'); name.className='name'; name.textContent=displayName||'User';
+      const textLine=document.createElement('div'); textLine.className='text-line'; textLine.textContent=message;
       userLine.appendChild(badgesEl); userLine.appendChild(name);
       msg.appendChild(userLine); msg.appendChild(textLine);
+      const atBottom=Math.abs(chat.scrollTop+chat.clientHeight-chat.scrollHeight)<4;
       chat.appendChild(msg);
-
-      while (chat.children.length > MAX_MSG) chat.removeChild(chat.firstChild);
-
-      if (MSG_LIFETIME > 0) {
-        setTimeout(() => { msg.classList.add('fade'); setTimeout(()=>msg.remove(), 650); }, MSG_LIFETIME);
-      }
+      if(atBottom) chat.scrollTop=chat.scrollHeight;
     }
 
-    // ========= Twitch IRC over WebSocket (sans librairie) =========
-    const WS_URL = 'wss://irc-ws.chat.twitch.tv:443';
-    let ws, pingTimer, reconnectTimer;
-
-    function log(...a){ if(SHOW_DEBUG) console.log(...a); }
-    function send(s){ if(ws && ws.readyState===1) ws.send(s+'\r\n'); }
-
-    function connect() {
-      clearTimeout(reconnectTimer);
-      ws = new WebSocket(WS_URL);
-
-      ws.addEventListener('open', () => {
-        log('✅ WS open');
-        // Anonyme + capacités
+    const WS_URL='wss://irc-ws.chat.twitch.tv:443';
+    let ws,pingTimer,reconnectTimer;
+    const send=s=>ws&&ws.readyState===1&&ws.send(s+'\r\n');
+    function connect(){
+      clearTimeout(reconnectTimer); try{ws&&ws.close();}catch(_){}
+      ws=new WebSocket(WS_URL);
+      ws.addEventListener('open',()=>{
+        setStatus('🔌 Connected (auth)…'); log('WS open');
         send('CAP REQ :twitch.tv/tags twitch.tv/commands twitch.tv/membership');
-        const nick = 'justinfan' + Math.floor(Math.random()*100000);
-        send('PASS SCHMOOPIIE'); // login anonyme
-        send(`NICK ${nick}`);
-        send(`JOIN #${CHANNEL}`);
-
-        // Keepalive périodique
+        const nick='justinfan'+Math.floor(Math.random()*100000);
+        send('PASS SCHMOOPIIE'); send(`NICK ${nick}`); send(`JOIN #${CHANNEL}`);
         clearInterval(pingTimer);
-        pingTimer = setInterval(() => { try { send('PING :keepalive'); } catch(_){} }, 240000);
+        pingTimer=setInterval(()=>{try{send('PING :keepalive');}catch(_){}} ,240000);
       });
-
-      ws.addEventListener('message', (ev) => {
-        const data = ev.data;
-        if (data.startsWith('PING')) { send('PONG :tmi.twitch.tv'); return; }
-
-        data.split('\r\n').forEach(line => {
-          if (!line) return;
-          if (line.includes('PRIVMSG')) {
-            const tagsPart = line.startsWith('@') ? line.slice(1, line.indexOf(' ')) : '';
-            const rest = tagsPart ? line.slice(tagsPart.length + 2) : line;
-            const msgIdx = rest.indexOf(' :');
-            const meta = rest.slice(0, msgIdx);
-            const message = rest.slice(msgIdx + 2);
-
-            const tags = {};
-            if (tagsPart) {
-              tagsPart.split(';').forEach(kv => {
-                const [k, v] = kv.split('=');
-                tags[k] = decodeURIComponent(v || '');
-              });
-            }
-            const displayName = tags['display-name'] || meta.split('!')[0].replace(':','');
-            const badges = (tags['badges'] || '').split(',').map(b => b.split('/')[0]).filter(Boolean);
-
-            addMessage({ displayName, message, badges });
+      ws.addEventListener('message',ev=>{
+        const data=ev.data;
+        if(data.startsWith('PING')){send('PONG :tmi.twitch.tv');return;}
+        if(data.includes(`JOIN #${CHANNEL}`)) setStatus('✅ Connected');
+        data.split('\r\n').forEach(line=>{
+          if(!line)return;
+          if(line.includes('PRIVMSG')){
+            const tagsPart=line.startsWith('@')?line.slice(1,line.indexOf(' ')):'';
+            const rest=tagsPart?line.slice(tagsPart.length+2):line;
+            const msgIdx=rest.indexOf(' :');
+            const meta=rest.slice(0,msgIdx);
+            const message=rest.slice(msgIdx+2);
+            const tags={}; if(tagsPart) tagsPart.split(';').forEach(kv=>{const[k,v]=kv.split('=');tags[k]=decodeURIComponent(v||'');});
+            const displayName=tags['display-name']||meta.split('!')[0].replace(':','');
+            const badges=(tags['badges']||'').split(',').map(b=>b.split('/')[0]).filter(Boolean);
+            addMessage({displayName,message,badges});
           }
         });
       });
-
-      ws.addEventListener('close', () => {
-        log('❌ WS closed — retrying soon');
-        clearInterval(pingTimer);
-        reconnectTimer = setTimeout(connect, 1500);
-      });
-
-      ws.addEventListener('error', () => {
-        log('⚠️ WS error');
-        try { ws.close(); } catch(_) {}
-      });
-    }
-
+      ws.addEventListener('close',()=>{setStatus('🔁 Reconnexion…');clearInterval(pingTimer);reconnectTimer=setTimeout(connect,1500);});
+      ws.addEventListener('error',()=>{setStatus('⚠️ Erreur WS');try{ws.close();}catch(_){}});}
     connect();
 
-    // ========= Mode démo (/?demo=1) pour tester sans chat =========
-    if (new URLSearchParams(location.search).get('demo') === '1') {
-      let i = 1;
-      setInterval(() => addMessage({
-        displayName:'DemoUser', message:`Message de test #${i++}`, badges:['vip']
-      }), 1200);
+    if(new URLSearchParams(location.search).get('demo')==='1'){
+      let i=1; setStatus('🧪 Demo mode');
+      setInterval(()=>addMessage({displayName:'DemoUser',message:`Message de test #${i++}`,badges:['vip','subscriber']}),900);
     }
   </script>
 </body>
