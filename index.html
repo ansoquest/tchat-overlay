@@ -10,12 +10,15 @@
       --box-width: 345px;
       --box-height: 678px;
       --pad: 10px;
+      --gap: 14px;          /* espace entre messages */
+      --fade-top-1: 0px;    /* début du fondu (haut) */
+      --fade-top-2: 24px;   /* progressif */
+      --fade-top-3: 56px;   /* opaque à partir d’ici */
     }
 
     html, body { height:100%; margin:0; background:transparent; overflow:hidden; }
     body { font-family:'Space Grotesk',sans-serif; color:#fff; }
 
-    /* l’overlay reste déplaçable dans OBS */
     #wrap{
       position:absolute; inset:0;
       display:flex; justify-content:flex-end; align-items:flex-end;
@@ -23,29 +26,44 @@
       padding:12px;
     }
 
-    /* cadre transparent, rien de gris */
     .chat-box{
       position:relative;
       width:var(--box-width);
       height:var(--box-height);
-      overflow:hidden;              /* masque les anciens en haut */
+      overflow:hidden;              /* on masque ce qui sort en haut */
       background:transparent;
       border-radius:16px;
     }
 
-    /* flux calé en bas, sans scroll visible */
+    /* Flux collé en bas, sans scroll visible.
+       Le "fondu" du haut est géré par un mask (invisible en design, juste une opacité). */
     #chat{
       position:absolute; inset:var(--pad);
       display:flex; flex-direction:column; justify-content:flex-end;
-      gap:10px;                      /* espace entre messages */
+      gap:var(--gap);
       overflow:hidden;
       scrollbar-width:none;
+
+      /* Fondu d’opacité en haut : transparent -> semi -> opaque */
+      -webkit-mask-image: linear-gradient(
+        to bottom,
+        rgba(0,0,0,0) var(--fade-top-1),
+        rgba(0,0,0,0.35) var(--fade-top-2),
+        rgba(0,0,0,1) var(--fade-top-3),
+        rgba(0,0,0,1) 100%
+      );
+              mask-image: linear-gradient(
+        to bottom,
+        rgba(0,0,0,0) var(--fade-top-1),
+        rgba(0,0,0,0.35) var(--fade-top-2),
+        rgba(0,0,0,1) var(--fade-top-3),
+        rgba(0,0,0,1) 100%
+      );
     }
     #chat::-webkit-scrollbar{ display:none; }
 
-    /* — MESSAGE — */
     .msg{ animation:fadeIn .18s ease both; max-width:100%; }
-    /* ligne 1 : pseudo seul, dans une bulle, aligné à gauche */
+    /* 1ère ligne : pseudo en bulle */
     .user-line{ display:flex; align-items:center; gap:6px; }
     .name{
       font-weight:600; font-size:13px; line-height:1.25;
@@ -53,17 +71,16 @@
       padding:2px 9px; display:inline-block; max-width:100%;
       text-overflow:ellipsis; white-space:nowrap; overflow:hidden;
     }
-    /* ligne 2 : texte du message */
+    /* 2e ligne : texte (interligne légèrement réduit) */
     .text-line{
       margin-top:2px;
-      font-size:16px; line-height:1.45; color:#fff;
+      font-size:16px; line-height:1.35;   /* ← plus serré */
+      color:#fff;
       text-shadow:0 1px 2px rgba(0,0,0,.45);
       overflow-wrap:anywhere;
     }
 
-    /* statut debug (caché) */
     #status{ display:none; }
-
     @keyframes fadeIn{ from{opacity:0; transform:translateY(4px);} to{opacity:1; transform:translateY(0);} }
   </style>
 </head>
@@ -84,7 +101,6 @@
     const setStatus = t=>statusEl.textContent=t;
     const log = (...a)=>SHOW_DEBUG&&console.log(...a);
 
-    // Ajoute un message: 1) bulle pseudo (ligne 1) 2) texte (ligne 2)
     function addMessage({ displayName, message }){
       const msg = document.createElement('div'); msg.className='msg';
 
@@ -99,11 +115,10 @@
       msg.appendChild(userLine);
       msg.appendChild(text);
 
-      chat.appendChild(msg);        // ajouté en bas
-      // pas de scroll : overflow hidden + justify-content:flex-end gardent le flux collé en bas
+      chat.appendChild(msg); // s’ajoute en bas, les anciens remontent et "passent" sous le mask d’opacité
     }
 
-    // ====== Connexion IRC WebSocket (sans librairie) ======
+    // ====== WebSocket IRC Twitch (sans librairie) ======
     const WS_URL='wss://irc-ws.chat.twitch.tv:443';
     let ws, pingTimer, reconnectTimer;
     const send = s => ws && ws.readyState===1 && ws.send(s+'\r\n');
@@ -113,7 +128,7 @@
       ws = new WebSocket(WS_URL);
 
       ws.addEventListener('open', ()=>{
-        setStatus(''); log('WS open');
+        setStatus('');
         send('CAP REQ :twitch.tv/tags twitch.tv/commands twitch.tv/membership');
         const nick = 'justinfan' + Math.floor(Math.random()*100000);
         send('PASS SCHMOOPIIE'); send(`NICK ${nick}`); send(`JOIN #${CHANNEL}`);
