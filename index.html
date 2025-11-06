@@ -7,9 +7,8 @@
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600&display=swap" rel="stylesheet" />
   <style>
     :root{
-      --box-width: 345px;    /* largeur */
-      --box-height: 678px;   /* hauteur (≈ 10 msgs visibles à 16px) */
-      --fade-size: 36px;
+      --box-width: 345px;
+      --box-height: 678px;
       --box-radius: 16px;
       --box-pad: 10px;
     }
@@ -17,7 +16,7 @@
     html, body { height:100%; margin:0; background:transparent; overflow:hidden; }
     body { font-family:'Space Grotesk',sans-serif; color:#fff; }
 
-    /* L'overlay entier reste déplaçable/libre dans OBS */
+    /* L'overlay entier est déplaçable librement dans OBS */
     #wrap {
       position:absolute; inset:0;
       display:flex; justify-content:flex-end; align-items:flex-end;
@@ -25,45 +24,33 @@
       padding:12px;
     }
 
-    /* La boîte scrollable qui masque via dégradés */
+    /* La box du chat (sans dégradés, sans scrollbar visible) */
     .chat-box {
       position:relative;
       width: var(--box-width);
       height: var(--box-height);
-      overflow: hidden; /* masque le flux + dégradés par-dessus */
+      overflow: hidden;            /* on masque les messages qui sortent par le haut */
       border-radius: var(--box-radius);
-      background: rgba(0,0,0,.18);
+      background: rgba(0,0,0,.18); /* léger fond pour lisibilité, modifie/retire si tu veux */
       box-shadow: 0 4px 24px rgba(0,0,0,.25);
       backdrop-filter: blur(2px);
     }
 
-    /* Flux vertical avec scroll y automatique */
+    /* Flux calé en bas : les nouveaux s’ajoutent et poussent les anciens vers le haut */
     #chat {
       position:absolute; inset: var(--box-pad);
-      overflow-y: auto;
-      display:flex; flex-direction:column; gap:8px;
-      scrollbar-width: none;
+      display:flex; flex-direction:column; justify-content:flex-end;
+      gap:8px;
+      overflow:hidden;             /* pas de scroll, on reste calé en bas */
     }
-    #chat::-webkit-scrollbar { display:none; }
 
-    /* Dégradés haut/bas pour une coupe douce */
-    .fade-top, .fade-bottom{
-      position:absolute; left:0; right:0; height:var(--fade-size); pointer-events:none;
+    .msg { max-width: 96%; animation: fadeInUp .22s ease both; }
+    .user-line {
+      display:flex; align-items:center; gap:6px; margin-bottom:3px;
     }
-    .fade-top{ top:0; background: linear-gradient(180deg, rgba(0,0,0,.55), rgba(0,0,0,0)); }
-    .fade-bottom{ bottom:0; background: linear-gradient(0deg, rgba(0,0,0,.55), rgba(0,0,0,0)); }
-
-    /* Message */
-    .msg { max-width: 96%; animation: fadeInUp .28s ease both; }
-    .user-line { display:flex; align-items:center; gap:6px; margin-bottom:3px; }
-    .badges { display:flex; align-items:center; gap:4px; }
-    .badge {
-      width:18px; height:18px;
-      background-size:contain; background-repeat:no-repeat; background-position:center;
-      filter:drop-shadow(0 1px 2px rgba(0,0,0,.45));
-      flex:0 0 18px;
-    }
+    /* Pseudo à droite */
     .name {
+      margin-left:auto;            /* pousse le pseudo à droite */
       font-weight:600; font-size:13px; color:#000;
       background:rgba(255,255,255,0.95);
       border-radius:999px; padding:2px 9px; line-height:1.25; display:inline-block;
@@ -71,18 +58,11 @@
     .text-line {
       font-weight:400; font-size:16px; line-height:1.45; color:#fff;
       text-shadow:0 2px 4px rgba(0,0,0,.55);
-      /* Option : couper les lignes longues proprement */
       overflow-wrap:anywhere;
     }
 
-    /* Statut discret dans la box */
-    #status {
-      position:absolute; top:6px; left:8px; z-index:2;
-      background:rgba(0,0,0,.55);
-      border:1px solid rgba(255,255,255,.18);
-      border-radius:10px; padding:4px 8px;
-      font-size:11px; line-height:1; pointer-events:none;
-    }
+    /* Statut masqué (tu peux repasser en display:block si besoin debug) */
+    #status { display:none; }
 
     @keyframes fadeInUp { from{opacity:0;transform:translateY(6px);} to{opacity:1;transform:translateY(0);} }
   </style>
@@ -91,9 +71,7 @@
   <div id="wrap">
     <div class="chat-box">
       <div id="status">⏳ Connecting…</div>
-      <div class="fade-top"></div>
       <div id="chat"></div>
-      <div class="fade-bottom"></div>
     </div>
   </div>
 
@@ -103,38 +81,27 @@
 
     const chat = document.getElementById('chat');
     const statusEl = document.getElementById('status');
-    const setStatus = t=>statusEl.textContent=t;
+    const setStatus = t=>{ if(statusEl) statusEl.textContent=t; };
     const log = (...a)=>SHOW_DEBUG&&console.log(...a);
 
-    // ➜ Ajoute le message sans aucune suppression
-    //    Auto-scroll vers le bas pour toujours voir le plus récent.
-    function addMessage({displayName,message,badges}){
+    // Ajoute un message en bas, sans suppression ; les plus anciens sortent par le haut (overflow hidden)
+    function addMessage({displayName,message}){
       const msg=document.createElement('div'); msg.className='msg';
 
       const userLine=document.createElement('div'); userLine.className='user-line';
-      const badgesEl=document.createElement('div'); badgesEl.className='badges';
+      const name=document.createElement('span'); name.className='name';
+      name.textContent=displayName||'User';
 
-      (badges||[]).forEach(code=>{
-        const el=document.createElement('div'); el.className='badge';
-        if(code==='moderator'||code==='mod') el.style.backgroundImage='url(https://static-cdn.jtvnw.net/badges/v1/3267646e-f1b9-47a5-9f4a-df85ed4f3728/2)';
-        if(code==='vip') el.style.backgroundImage='url(https://static-cdn.jtvnw.net/badges/v1/b817aba4-31ef-4f44-a19c-b06c5022f826/2)';
-        if(code==='broadcaster') el.style.backgroundImage='url(https://static-cdn.jtvnw.net/badges/v1/7008c703-e11a-4f99-bd4f-740d47de4f30/2)';
-        if(code==='partner') el.style.backgroundImage='url(https://static-cdn.jtvnw.net/badges/v1/6d4ce6b1-0c02-4b57-9b90-93a75b9a9c45/2)';
-        if(code==='premium'||code==='prime') el.style.backgroundImage='url(https://static-cdn.jtvnw.net/badges/v1/d12a2e26-97e0-4a6a-9a3f-1d19ccbd4cc1/2)';
-        if(code==='subscriber'||code==='sub') el.style.backgroundImage='url(https://static-cdn.jtvnw.net/badges/v1/8489478c-b8ef-4095-b62f-dab085eddf12/2)';
-        badgesEl.appendChild(el);
-      });
+      const textLine=document.createElement('div'); textLine.className='text-line';
+      textLine.textContent=message;
 
-      const name=document.createElement('span'); name.className='name'; name.textContent=displayName||'User';
-      const textLine=document.createElement('div'); textLine.className='text-line'; textLine.textContent=message;
-
-      userLine.appendChild(badgesEl); userLine.appendChild(name);
-      msg.appendChild(userLine); msg.appendChild(textLine);
+      userLine.appendChild(name);
+      msg.appendChild(userLine);
+      msg.appendChild(textLine);
 
       chat.appendChild(msg);
-
-      // Auto-scroll en bas pour que le dernier message soit visible.
-      chat.scrollTop = chat.scrollHeight;
+      // Rester calé en bas visuellement (sans scrollbar)
+      // (pas besoin de scrollTop ici car overflow:hidden et justify-content:flex-end)
     }
 
     // ====== Twitch IRC via WebSocket (sans librairie) ======
@@ -147,7 +114,7 @@
       ws=new WebSocket(WS_URL);
 
       ws.addEventListener('open',()=>{
-        setStatus('🔌 Connected (auth)…'); log('WS open');
+        setStatus(''); log('WS open');
         send('CAP REQ :twitch.tv/tags twitch.tv/commands twitch.tv/membership');
         const nick='justinfan'+Math.floor(Math.random()*100000);
         send('PASS SCHMOOPIIE'); send(`NICK ${nick}`); send(`JOIN #${CHANNEL}`);
@@ -158,8 +125,6 @@
       ws.addEventListener('message',ev=>{
         const data=ev.data;
         if(data.startsWith('PING')){send('PONG :tmi.twitch.tv');return;}
-
-        if(data.includes(`JOIN #${CHANNEL}`)) setStatus('✅ Connected');
 
         data.split('\r\n').forEach(line=>{
           if(!line)return;
@@ -173,25 +138,20 @@
             const tags={}; if(tagsPart) tagsPart.split(';').forEach(kv=>{const[k,v]=kv.split('=');tags[k]=decodeURIComponent(v||'');});
             const displayName=tags['display-name']||meta.split('!')[0].replace(':','');
 
-            // badges = "moderator/1,subscriber/6" -> ['moderator','subscriber']
-            const badges=(tags['badges']||'').split(',').map(b=>b.split('/')[0]).filter(Boolean);
-
-            addMessage({displayName,message,badges});
+            addMessage({displayName,message});
           }
         });
       });
 
-      ws.addEventListener('close',()=>{ setStatus('🔁 Reconnexion…'); clearInterval(pingTimer); reconnectTimer=setTimeout(connect,1500); });
-      ws.addEventListener('error',()=>{ setStatus('⚠️ Erreur WS'); try{ws.close();}catch(_){}} );
+      ws.addEventListener('close',()=>{ clearInterval(pingTimer); reconnectTimer=setTimeout(connect,1500); });
+      ws.addEventListener('error',()=>{ try{ws.close();}catch(_){}} );
     }
     connect();
 
-    // Mode démo : .../?demo=1 pour tests hors chat
+    // Mode démo : .../?demo=1
     if(new URLSearchParams(location.search).get('demo')==='1'){
-      let i=1; setStatus('🧪 Demo mode');
-      setInterval(()=>addMessage({
-        displayName:'DemoUser', message:`Message de test #${i++}`, badges:['vip','subscriber']
-      }), 900);
+      let i=1;
+      setInterval(()=>addMessage({displayName:'DemoUser',message:`Message de test #${i++}`}), 900);
     }
   </script>
 </body>
