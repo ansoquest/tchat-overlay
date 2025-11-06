@@ -15,7 +15,7 @@
     html, body { height:100%; margin:0; background:transparent; overflow:hidden; }
     body { font-family:'Space Grotesk',sans-serif; color:#fff; }
 
-    /* l’overlay entier reste déplaçable dans OBS */
+    /* l’overlay reste déplaçable dans OBS */
     #wrap{
       position:absolute; inset:0;
       display:flex; justify-content:flex-end; align-items:flex-end;
@@ -23,50 +23,46 @@
       padding:12px;
     }
 
-    /* cadre invisible (transparent) */
+    /* cadre transparent, rien de gris */
     .chat-box{
       position:relative;
       width:var(--box-width);
       height:var(--box-height);
-      overflow:hidden;           /* masque ce qui dépasse en haut */
-      border-radius:16px;        /* optionnel, juste propre */
-      background:transparent;    /* pas de fond gris */
+      overflow:hidden;              /* masque les anciens en haut */
+      background:transparent;
+      border-radius:16px;
     }
 
-    /* flux calé en bas, pas de scrollbar visible */
+    /* flux calé en bas, sans scroll visible */
     #chat{
       position:absolute; inset:var(--pad);
       display:flex; flex-direction:column; justify-content:flex-end;
-      gap:6px;
+      gap:10px;                      /* espace entre messages */
       overflow:hidden;
       scrollbar-width:none;
     }
     #chat::-webkit-scrollbar{ display:none; }
 
-    /* une ligne = [badges?] [name] [:] [message] */
-    .msg{ animation:fadeIn .18s ease both; }
-    .line{ display:flex; align-items:flex-start; gap:6px; }
-    .badges{ display:flex; gap:4px; align-items:center; }
-    .badge{
-      width:18px; height:18px; flex:0 0 18px;
-      background-size:contain; background-position:center; background-repeat:no-repeat;
-      filter:drop-shadow(0 1px 1px rgba(0,0,0,.45));
-    }
+    /* — MESSAGE — */
+    .msg{ animation:fadeIn .18s ease both; max-width:100%; }
+    /* ligne 1 : pseudo seul, dans une bulle, aligné à gauche */
+    .user-line{ display:flex; align-items:center; gap:6px; }
     .name{
-      font-weight:600;
-      font-size:16px;           /* même taille que le corps, comme le chat Twitch */
-      line-height:1.35;
-      color:#a9d1ff;            /* sera écrasé par la couleur Twitch du user */
+      font-weight:600; font-size:13px; line-height:1.25;
+      color:#000; background:#fff; border-radius:999px;
+      padding:2px 9px; display:inline-block; max-width:100%;
+      text-overflow:ellipsis; white-space:nowrap; overflow:hidden;
     }
-    .sep{ margin:0 4px 0 2px; opacity:.85; }
-    .text{
+    /* ligne 2 : texte du message */
+    .text-line{
+      margin-top:2px;
       font-size:16px; line-height:1.45; color:#fff;
       text-shadow:0 1px 2px rgba(0,0,0,.45);
       overflow-wrap:anywhere;
     }
 
     /* statut debug (caché) */
-    #status{ display:none; font-size:11px; position:absolute; top:6px; left:8px; }
+    #status{ display:none; }
 
     @keyframes fadeIn{ from{opacity:0; transform:translateY(4px);} to{opacity:1; transform:translateY(0);} }
   </style>
@@ -82,61 +78,29 @@
   <script>
     const CHANNEL = 'ansoquest';
     const SHOW_DEBUG = false;
+
     const chat = document.getElementById('chat');
     const statusEl = document.getElementById('status');
     const setStatus = t=>statusEl.textContent=t;
     const log = (...a)=>SHOW_DEBUG&&console.log(...a);
 
-    // Mapping de quelques badges “classiques” Twitch
-    const BADGE_ICON = {
-      moderator: 'https://static-cdn.jtvnw.net/badges/v1/3267646e-f1b9-47a5-9f4a-df85ed4f3728/2',
-      mod:        'https://static-cdn.jtvnw.net/badges/v1/3267646e-f1b9-47a5-9f4a-df85ed4f3728/2',
-      vip:        'https://static-cdn.jtvnw.net/badges/v1/b817aba4-31ef-4f44-a19c-b06c5022f826/2',
-      broadcaster:'https://static-cdn.jtvnw.net/badges/v1/7008c703-e11a-4f99-bd4f-740d47de4f30/2',
-      partner:    'https://static-cdn.jtvnw.net/badges/v1/6d4ce6b1-0c02-4b57-9b90-93a75b9a9c45/2',
-      premium:    'https://static-cdn.jtvnw.net/badges/v1/d12a2e26-97e0-4a6a-9a3f-1d19ccbd4cc1/2', // prime
-      prime:      'https://static-cdn.jtvnw.net/badges/v1/d12a2e26-97e0-4a6a-9a3f-1d19ccbd4cc1/2',
-      subscriber: 'https://static-cdn.jtvnw.net/badges/v1/8489478c-b8ef-4095-b62f-dab085eddf12/2', // générique
-      sub:        'https://static-cdn.jtvnw.net/badges/v1/8489478c-b8ef-4095-b62f-dab085eddf12/2',
-    };
-
-    function addMessage({ displayName, message, badges, color }){
+    // Ajoute un message: 1) bulle pseudo (ligne 1) 2) texte (ligne 2)
+    function addMessage({ displayName, message }){
       const msg = document.createElement('div'); msg.className='msg';
-      const line = document.createElement('div'); line.className='line';
 
-      // badges (créés seulement s’il y en a → pas d’espace sinon)
-      if (badges && badges.length){
-        const bWrap = document.createElement('div'); bWrap.className='badges';
-        badges.forEach(code=>{
-          const url = BADGE_ICON[code];
-          if (!url) return; // ignore badges inconnus pour éviter des trous
-          const b = document.createElement('div');
-          b.className='badge';
-          b.style.backgroundImage = `url(${url})`;
-          bWrap.appendChild(b);
-        });
-        if (bWrap.childElementCount) line.appendChild(bWrap);
-      }
-
-      // pseudo
+      const userLine = document.createElement('div'); userLine.className='user-line';
       const name = document.createElement('span'); name.className='name';
       name.textContent = displayName || 'User';
-      if (color) name.style.color = color; // couleur Twitch native
-      line.appendChild(name);
+      userLine.appendChild(name);
 
-      // séparateur :
-      const sep = document.createElement('span'); sep.className='sep'; sep.textContent=':';
-      line.appendChild(sep);
-
-      // message
-      const text = document.createElement('span'); text.className='text';
+      const text = document.createElement('div'); text.className='text-line';
       text.textContent = message;
 
-      line.appendChild(text);
-      msg.appendChild(line);
+      msg.appendChild(userLine);
+      msg.appendChild(text);
 
-      // ajout en bas, pousse vers le haut (overflow hidden)
-      chat.appendChild(msg);
+      chat.appendChild(msg);        // ajouté en bas
+      // pas de scroll : overflow hidden + justify-content:flex-end gardent le flux collé en bas
     }
 
     // ====== Connexion IRC WebSocket (sans librairie) ======
@@ -170,7 +134,6 @@
             const meta = rest.slice(0, msgIdx);
             const message = rest.slice(msgIdx + 2);
 
-            // parse tags
             const tags = {};
             if (tagsPart) tagsPart.split(';').forEach(kv=>{
               const [k,v] = kv.split('=');
@@ -178,11 +141,8 @@
             });
 
             const displayName = tags['display-name'] || meta.split('!')[0].replace(':','');
-            const color = tags['color'] || '';
-            // badges = "moderator/1,subscriber/6" → ['moderator','subscriber']
-            const badges = (tags['badges']||'').split(',').map(b=>b.split('/')[0]).filter(Boolean);
 
-            addMessage({ displayName, message, badges, color });
+            addMessage({ displayName, message });
           }
         });
       });
@@ -201,8 +161,8 @@
     if (new URLSearchParams(location.search).get('demo')==='1'){
       let i=1;
       setInterval(()=>addMessage({
-        displayName:'DemoUser', message:`Message de test #${i++}`,
-        badges: i%2?['vip']:[], color:'#1E90FF'
+        displayName:'DemoUser',
+        message:`Message de test #${i++}`
       }), 800);
     }
   </script>
